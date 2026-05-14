@@ -278,23 +278,50 @@ If a middleware wants to stop the chain immediately, it can simply avoid calling
 
 ---
 
-# Validation
+## Custom Middleware Example
+
+```go
+func RequestTimer() vodka.HandlerFunc {
+	return func(c *vodka.Context) {
+		start := time.Now()
+
+		c.Next()
 
 		latency := time.Since(start)
-
-		log.Printf(
-			"[%s] %s %v",
-			c.Request.Method,
-			c.Request.URL.Path,
-			latency,
-		)
+		log.Printf("[RequestTimer] %s %s %v", c.Request.Method, c.Request.URL.Path, latency)
 	}
 }
 
-app.Use(Logger())
+func AdminOnly() vodka.HandlerFunc {
+	return func(c *vodka.Context) {
+		token := c.GetHeader("Authorization")
+		if token != "Bearer secret-token" {
+			c.JSON(401, vodka.M{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_role", "admin")
+		c.Next()
+	}
+}
+
+func main() {
+	app := vodka.DefaultRouter()
+
+	app.Use(vodka.Logger(), vodka.Recovery(), vodka.ErrorHandler())
+	app.Use(RequestTimer())
+
+	api := app.Group("/api", AdminOnly())
+	api.GET("/dashboard", func(c *vodka.Context) {
+		userRole, _ := c.Get("user_role")
+		c.JSON(200, vodka.M{"role": userRole})
+	})
+}
 ```
 
 ---
+
 
 # Validation
 
