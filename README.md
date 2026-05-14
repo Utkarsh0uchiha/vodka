@@ -292,17 +292,12 @@ func RequestTimer() vodka.HandlerFunc {
 	}
 }
 
-func AdminOnly() vodka.HandlerFunc {
-	return func(c *vodka.Context) {
-		token := c.GetHeader("Authorization")
-		if token != "Bearer secret-token" {
-			c.JSON(401, vodka.M{"error": "unauthorized"})
-			c.Abort()
-			return
-		}
-
-		c.Set("user_role", "admin")
-		c.Next()
+		log.Printf(
+			"[%s] %s %v",
+			c.Request.Method,
+			c.Request.URL.Path,
+			latency, 
+		)
 	}
 }
 
