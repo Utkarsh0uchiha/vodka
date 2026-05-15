@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -18,7 +19,8 @@ type RouterGroup struct {
 
 // httprouter wrapper
 type Engine struct {
-	router *httprouter.Router
+	router   *httprouter.Router
+	WSConfig *WSConfig
 	*RouterGroup
 }
 
@@ -27,7 +29,8 @@ func NewRouter() *Engine {
 	router := httprouter.New()
 	router.HandleOPTIONS = false
 	engine := &Engine{
-		router: router,
+		router:   router,
+		WSConfig: DefaultWSConfig(),
 	}
 
 	engine.RouterGroup = &RouterGroup{
@@ -179,4 +182,56 @@ func (rg *RouterGroup) PUT(path string, handler HandlerFunc) {
 
 func (rg *RouterGroup) DELETE(path string, handler HandlerFunc) {
 	rg.addRoute(http.MethodDelete, path, handler)
+}
+
+// WS registers a WebSocket handler at the given path.
+// Group middlewares (auth, rate limiting, etc.) run during the HTTP upgrade phase.
+// If any middleware aborts the request, the upgrade is cancelled.
+func (rg *RouterGroup) WS(relativePath string, handler WSHandlerFunc) {
+	absolutePath := rg.prefix + relativePath
+
+	cfg := rg.engine.WSConfig
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:   cfg.ReadBufferSize,
+		WriteBufferSize:  cfg.WriteBufferSize,
+		HandshakeTimeout: cfg.HandshakeTimeout,
+		CheckOrigin:      cfg.CheckOrigin,
+	}
+
+	// Snapshot group middlewares at registration time.
+	middlewares := make([]HandlerFunc, len(rg.middlewares))
+	copy(middlewares, rg.middlewares)
+
+	rg.engine.router.GET(absolutePath, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+		// Run group middlewares in the HTTP phase so auth/rate-limit middleware works.
+		if len(middlewares) > 0 {
+			c := &Context{
+				Writer:   w,
+				Request:  r,
+				Params:   params,
+				handlers: middlewares,
+				index:    -1,
+			}
+			c.Next()
+			if c.isAborted {
+				return
+			}
+		}
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf(Red+"WS upgrade failed: %v"+Reset, err)
+			return
+		}
+		defer conn.Close()
+
+		wc := &WSContext{
+			Conn:    conn,
+			Keys:    make(map[string]any),
+			Params:  params,
+			Request: r,
+		}
+
+		handler(wc)
+	})
 }
