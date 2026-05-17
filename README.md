@@ -177,6 +177,7 @@ Vodka automatically:
 | Panic Recovery Middleware | ✅ |
 | Logger Middleware | ✅ |
 | CORS Middleware | ✅ |
+| Request ID Middleware | ✅ |
 | Context Storage | ✅ |
 
 ---
@@ -313,6 +314,35 @@ func main() {
 		c.JSON(200, vodka.M{"role": userRole})
 	})
 }
+```
+
+---
+
+## Request ID Middleware
+
+Track requests across your logs using automatic request ID generation. Every request gets a unique ID that's automatically added to response headers and stored in the context.
+
+```go
+app := vodka.DefaultRouter()
+
+// Add request ID middleware — generates unique ID for each request
+app.Use(mixers.RequestID())
+
+app.GET("/api/users", func(c *vodka.Context) {
+	requestID, _ := c.Get("request-id")
+	log.Printf("[%v] Fetching users", requestID)
+	c.JSON(200, vodka.M{"users": []string{"Alice", "Bob"}})
+})
+
+// Client receives: X-Request-ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+### Custom Header Name
+
+Use a different header name if needed (context key is always `"request-id"`):
+
+```go
+app.Use(mixers.RequestIDWithHeader("X-Correlation-ID"))
 ```
 
 ---
