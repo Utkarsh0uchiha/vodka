@@ -89,6 +89,12 @@ func TestRequestIDUniqueness(t *testing.T) {
 	app.GET("/test", func(c *vodka.Context) {
 		id, _ := c.Get("request-id")
 		idStr := id.(string)
+		
+		reqHeaderID := c.Request.Header.Get("X-Request-ID")
+		if reqHeaderID != idStr {
+			t.Errorf("request header ID (%s) doesn't match context ID (%s)", reqHeaderID, idStr)
+		}
+		
 		if requestID1 == "" {
 			requestID1 = idStr
 		} else {
@@ -128,6 +134,12 @@ func TestRequestIDExistingHeader(t *testing.T) {
 
 	app.GET("/test", func(c *vodka.Context) {
 		requestID, _ := c.Get("request-id")
+		
+		reqHeaderID := c.Request.Header.Get("X-Request-ID")
+		if reqHeaderID != requestID {
+			t.Errorf("request header ID (%s) doesn't match context ID (%s)", reqHeaderID, requestID)
+		}
+		
 		c.JSON(200, vodka.M{"request_id": requestID})
 	})
 
@@ -177,6 +189,12 @@ func TestRequestIDAccessibleAcrossMiddleware(t *testing.T) {
 		if exists {
 			requestIDFromMiddleware = id.(string)
 		}
+		
+		reqHeaderID := c.Request.Header.Get("X-Request-ID")
+		if !exists || reqHeaderID != id.(string) {
+			t.Errorf("request header ID (%s) doesn't match context ID (%v)", reqHeaderID, id)
+		}
+		
 		c.Next()
 	})
 
@@ -215,6 +233,11 @@ func TestRequestIDContextAccess(t *testing.T) {
 
 		if contextID != responseID {
 			t.Errorf("context ID (%v) doesn't match response header ID (%s)", contextID, responseID)
+		}
+
+		reqHeaderID := c.Request.Header.Get("X-Request-ID")
+		if contextID != reqHeaderID {
+			t.Errorf("context ID (%v) doesn't match request header ID (%s)", contextID, reqHeaderID)
 		}
 
 		c.String(200, "ok")
