@@ -19,12 +19,24 @@ func (g *gzipResponseWriter) Write(b []byte) (int, error) {
 	return g.gz.Write(b)
 }
 
-// pool reuses gzip writers to avoid allocations on every request.
-var gzipPool = sync.Pool{
-	New: func() any {
-		gz, _ := gzip.NewWriterLevel(nil, gzip.DefaultCompression)
-		return gz
-	},
+// Map of pools for different levels
+var gzipPools sync.Map
+
+// Function to get pool for a level, if not in the map then create a pool for the level and store
+func getPool(level int) *sync.Pool {
+	if gzPool, ok := gzipPools.Load(level); ok {
+		return gzPool.(*sync.Pool)
+	}
+
+	gzPool := &sync.Pool{
+		New: func() any {
+			gz, _ := gzip.NewWriterLevel(nil, level)
+			return gz
+		},
+	}
+
+	gz, _ := gzipPools.LoadOrStore(level, gzPool)
+	return gz.(*sync.Pool)
 }
 
 func newGzipMiddleware(level int) vodka.HandlerFunc {
@@ -34,7 +46,8 @@ func newGzipMiddleware(level int) vodka.HandlerFunc {
 			return
 		}
 
-		gz := gzipPool.Get().(*gzip.Writer)
+		gzPool := getPool(level)
+		gz := gzPool.Get().(*gzip.Writer)
 		gz.Reset(c.Writer)
 
 		c.Writer.Header().Set("Content-Encoding", "gzip")
@@ -46,7 +59,7 @@ func newGzipMiddleware(level int) vodka.HandlerFunc {
 
 		defer func() {
 			gz.Close()
-			gzipPool.Put(gz)
+			gzPool.Put(gz)
 			c.Writer = original
 		}()
 
