@@ -103,6 +103,14 @@ func runDev() {
 }
 
 func createProject(name string) {
+	fmt.Println(Cyan + "Choose project type:" + Reset)
+	fmt.Println("1. Vite + React")
+	fmt.Println("2. NextJS")
+	fmt.Println("3. Only Vodka Backend (Go)")
+
+	var choice int
+	fmt.Print("Enter choice (1/2/3): ")
+	fmt.Scanln(&choice)
 	fmt.Printf(Cyan+"Distilling your project: %s...\n"+Reset, name)
 
 	os.Mkdir(name, 0755)
@@ -121,7 +129,10 @@ import (
 func main() {
 	app := vodka.DefaultRouter() // Creates a Default Router with Logger and Recovery Middleware
 
-	allowedOrigins := []string{"http://localhost:5173"}
+	allowedOrigins := []string{
+	"http://localhost:5173", // Vite
+	"http://localhost:3000", // NextJS
+}
 
 	app.Use(vodka.AllowCORS(allowedOrigins))
 
@@ -166,15 +177,67 @@ func Hello(c *vodka.Context) {
 	os.WriteFile(filepath.Join(name, "controllers", "ping.go"), []byte(controllersContent), 0644)
 	os.WriteFile(filepath.Join(name, "routes", "routes.go"), []byte(routesContent), 0644)
 
-	fmt.Println(Gray + "Spinning up React frontend with Vite..." + Reset)
-	if runtime.GOOS == "windows" {
-		runCmd(name, "cmd", "/C", "npm create vite@latest frontend -- --template react")
-	} else {
-		runCmd(name, "npm", "create", "vite@latest", "frontend", "--", "--template", "react")
+	switch choice {
+	case 1:
+		fmt.Println(Gray + "Spinning up React frontend with Vite..." + Reset)
+
+		if runtime.GOOS == "windows" {
+			runCmd(name, "cmd", "/C", "npm create vite@latest frontend -- --template react")
+		} else {
+			runCmd(name, "npm", "create", "vite@latest", "frontend", "--", "--template", "react")
+		}
+
+	case 2:
+		fmt.Println(Gray + "Creating NextJS project..." + Reset)
+
+		if runtime.GOOS == "windows" {
+			runCmd(name, "cmd", "/C", "npx create-next-app@latest frontend --yes")
+		} else {
+			runCmd(name, "npx", "create-next-app@latest", "frontend", "--yes")
+		}
+
+	case 3:
+		fmt.Println(Green + "Backend-only Vodka project created!" + Reset)
+
+	default:
+		fmt.Println(Red + "Invalid choice! Defaulting to Vite + React." + Reset)
+
+		if runtime.GOOS == "windows" {
+			runCmd(name, "cmd", "/C", "npm create vite@latest frontend -- --template react")
+		} else {
+			runCmd(name, "npm", "create", "vite@latest", "frontend", "--", "--template", "react")
+		}
 	}
 
 	fmt.Printf(Green+"\nProject %s is ready!\n"+Reset, name)
-	fmt.Printf(Cyan+"Next steps:\n"+Reset+"  "+Green+"cd %s\n"+Reset+"  "+Green+"cd frontend && npm install\n"+Reset+"  "+Green+"cd ..\n"+Reset+"  "+Green+"vodka run dev\n"+Reset, name)
+
+	switch choice {
+	case 1:
+		fmt.Printf(
+			Cyan+"Next steps:\n"+Reset+
+				"  "+Green+"cd %s\n"+Reset+
+				"  "+Green+"cd frontend && npm install\n"+Reset+
+				"  "+Green+"cd ..\n"+Reset+
+				"  "+Green+"vodka run dev\n"+Reset,
+			name,
+		)
+
+	case 2:
+		fmt.Printf(
+			Cyan+"Next steps:\n"+Reset+
+				"  "+Green+"cd %s\n"+Reset+
+				"  "+Green+"vodka run dev\n"+Reset,
+			name,
+		)
+
+	case 3:
+		fmt.Printf(
+			Cyan+"Next steps:\n"+Reset+
+				"  "+Green+"cd %s\n"+Reset+
+				"  "+Green+"go run .\n"+Reset,
+			name,
+		)
+	}
 }
 
 func runCmd(dir string, name string, args ...string) {
@@ -263,4 +326,3 @@ func buildAndRun() {
 
 	log.Println(Green + "App is running!" + Reset)
 }
-
