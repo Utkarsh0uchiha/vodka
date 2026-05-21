@@ -101,7 +101,7 @@ func (vrl *VodkaRateLimiter) getVisitor(ip string) *limiter {
 
 func RateLimiter(vrl *VodkaRateLimiter) vodka.HandlerFunc {
 	return func(c *vodka.Context) {
-		ip := c.IP()
+		ip := c.ClientIP()
 
 		limiter := vrl.getVisitor(ip)
 

@@ -2,10 +2,12 @@ package vodka
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -19,8 +21,9 @@ type RouterGroup struct {
 
 // httprouter wrapper
 type Engine struct {
-	router   *httprouter.Router
-	WSConfig *WSConfig
+	router         *httprouter.Router
+	WSConfig       *WSConfig
+	trustedProxies []*net.IPNet
 	*RouterGroup
 }
 
@@ -139,7 +142,7 @@ func (rg *RouterGroup) addRoute(method string, comp string, handler HandlerFunc)
 	rg.engine.router.Handle(method, absolutePath, func(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 
 		c := contextPool.Get().(*Context)
-		c.Initialize(w, r, params, handlers)
+		c.Initialize(w, r, params, handlers, rg.engine)
 
 		defer func() {
 			c.Reset()
@@ -283,4 +286,36 @@ func (rg *RouterGroup) WS(relativePath string, handler WSHandlerFunc) {
 
 		handler(wc)
 	})
+}
+
+// Sets trusted Proxies
+func (e *Engine) SetTrustedProxies(proxies []string) error {
+	var trusted []*net.IPNet
+
+	for _, proxy := range proxies {
+		if !strings.Contains(proxy, "/") {
+			proxy += "/32" // attaches 32 to leave 0 bits, meaning only this ip is trusted
+		}
+
+		_, cidr, err := net.ParseCIDR(proxy)
+		if err != nil {
+			return err
+		}
+
+		trusted = append(trusted, cidr)
+	}
+
+	e.trustedProxies = trusted
+	return nil
+}
+
+// helper to check if proxy is trusted
+func (e *Engine) isTrustedProxy(ip net.IP) bool {
+	for _, trusted := range e.trustedProxies {
+		if trusted.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }

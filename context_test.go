@@ -540,3 +540,114 @@ func TestClearCookie(t *testing.T) {
 		t.Errorf("got MaxAge %d, want -1", cookies[0].MaxAge)
 	}
 }
+
+func TestClientIPBasic(t *testing.T) {
+	app := DefaultRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.42:1234"
+
+	c := &Context{
+		Request: req,
+		engine:  app,
+	}
+
+	ip := c.ClientIP()
+
+	if ip != "203.0.113.42" {
+		t.Fatalf("Expected=203.0.113.42:1234, Got=%s", ip)
+	}
+}
+
+func TestClientIPWithTrustedProxy(t *testing.T) {
+	app := DefaultRouter()
+
+	app.SetTrustedProxies([]string{"10.0.0.5/8"})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.42")
+
+	c := &Context{
+		Request: req,
+		engine:  app,
+	}
+
+	ip := c.ClientIP()
+
+	if ip != "203.0.113.42" {
+		t.Errorf("Expected=203.0.113.42, Got=%s", ip)
+	}
+}
+
+func TestClientIPIgnoresFakeXFF(t *testing.T) {
+	app := DefaultRouter()
+
+	app.SetTrustedProxies([]string{"10.0.0.0/8"})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.99:1234"
+	req.Header.Set("X-Forwarded-For", "8.8.8.8")
+
+	c := &Context{
+		Request: req,
+		engine:  app,
+	}
+
+	ip := c.ClientIP()
+
+	if ip != "203.0.113.99" {
+		t.Fatalf("Should ignore fake XFF, Got=%s", ip)
+	}
+}
+
+func TestClientIPProxyChain(t *testing.T) {
+	app := DefaultRouter()
+
+	app.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12"})
+
+	req := httptest.NewRequest("GET", "/", nil)
+
+	req.RemoteAddr = "10.0.0.5:1234"
+
+	req.Header.Set("X-Forwarded-For", "203.0.113.42, 172.16.0.1")
+
+	c := &Context{
+		Request: req,
+		engine:  app,
+	}
+
+	ip := c.ClientIP()
+
+	if ip != "203.0.113.42" {
+		t.Fatalf("Expected=203.0.113.42, Got=%s", ip)
+	}
+}
+
+func TestClientIPInvalidHeader(t *testing.T) {
+	app := DefaultRouter()
+
+	app.SetTrustedProxies([]string{
+		"10.0.0.0/8",
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+
+	req.RemoteAddr = "10.0.0.5:1234"
+
+	req.Header.Set(
+		"X-Forwarded-For",
+		"not-an-ip",
+	)
+
+	c := &Context{
+		Request: req,
+		engine:  app,
+	}
+
+	ip := c.ClientIP()
+
+	if ip != "10.0.0.5" {
+		t.Fatalf("Expected=10.0.0.5, Got=%s", ip)
+	}
+}

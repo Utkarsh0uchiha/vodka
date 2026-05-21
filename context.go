@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
@@ -43,6 +45,7 @@ type Context struct {
 	handlers   []HandlerFunc       // stores middleware funcs and also main handler func
 	index      int8                // tracks current step
 	queryCache url.Values          // Caches query parameter values for fast access
+	engine     *Engine
 	isAborted  bool
 }
 
@@ -66,15 +69,17 @@ func (c *Context) Reset() {
 	c.queryCache = nil
 	c.Errors = nil
 	c.isAborted = false
+	c.engine = nil
 }
 
 // helper to initialize Context
-func (c *Context) Initialize(w http.ResponseWriter, r *http.Request, p httprouter.Params, handlers []HandlerFunc) {
+func (c *Context) Initialize(w http.ResponseWriter, r *http.Request, p httprouter.Params, handlers []HandlerFunc, e *Engine) {
 	c.Writer = w
 	c.Request = r
 	c.Params = p
 	c.handlers = handlers
 	c.index = -1
+	c.engine = e
 }
 
 // helper function to copy context for using it outisde the request lifecycle
@@ -83,6 +88,7 @@ func (c *Context) Copy() *Context {
 		Request:   c.Request,
 		index:     c.index,
 		isAborted: c.isAborted,
+		engine:    c.engine,
 	}
 
 	if c.Params != nil {
@@ -257,6 +263,57 @@ func (c *Context) String(statusCode int, text string) {
 // Helper to get request IP
 func (c *Context) IP() string {
 	return c.Request.RemoteAddr
+}
+
+// Helper to get actual client ip when XFF is involved
+func (c *Context) ClientIP() string {
+	ip, _ := parseRemoteIP(c.Request.RemoteAddr)
+
+	if ip == nil {
+		return ""
+	}
+
+	if !c.engine.isTrustedProxy(ip) {
+		return ip.String()
+	}
+
+	xff := c.Request.Header.Get("X-Forwarded-For")
+
+	if xff == "" {
+		return ip.String()
+	}
+
+	return c.parseXFF(xff, ip.String())
+}
+
+// parses XFF header to find client ip
+func (c *Context) parseXFF(xff string, fallback string) string {
+	ips := strings.Split(xff, ",")
+
+	for i := len(ips) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(ips[i]))
+
+		if ip == nil {
+			continue
+		}
+
+		if !c.engine.isTrustedProxy(ip) {
+			return ip.String()
+		}
+	}
+
+	return fallback
+}
+
+// helper to parse ip to cidr
+func parseRemoteIP(addr string) (net.IP, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return net.ParseIP(host), nil
+
 }
 
 // QueryInt returns query param as int or an error
