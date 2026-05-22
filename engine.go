@@ -169,6 +169,14 @@ func (rg *RouterGroup) DELETE(path string, handler HandlerFunc) {
 	rg.addRoute(http.MethodDelete, path, handler)
 }
 
+func (rg *RouterGroup) PATCH(path string, handler HandlerFunc) {
+	rg.addRoute(http.MethodPatch, path, handler)
+}
+
+func (rg *RouterGroup) HEAD(path string, handler HandlerFunc) {
+	rg.addRoute(http.MethodHead, path, handler)
+}
+
 // AllowWSOrigins whitelists the given origins for WebSocket upgrade requests.
 // Call this before registering WS routes.
 //
